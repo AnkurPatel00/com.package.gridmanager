@@ -1,0 +1,13 @@
+{
+  "name":"com.package.gridmanager",
+  "version":"0.0.1",
+  "description":"com.package.gridmanager",
+  "author":"Brainbasher",
+  "license":"ISC",
+  "displayName":"GridManager",
+  "hideInEditor":false,
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/AnkurPatel00/com.package.gridmanager.git"
+    }
+}
