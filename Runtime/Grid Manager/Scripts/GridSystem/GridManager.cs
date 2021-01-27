@@ -5,9 +5,9 @@ using UnityEngine;
 
 public class GridManager : MBSingleton<GridManager>
 {
-    public GridImage _GridImage;
+    public GameObject _GridPrefab;
 
-    public DrawGrid _DrawGrid;
+    public Sprite _GridImage;
 
     [Range(0, 99)]
     public int _HorizontalLength, _VerticalLength;
@@ -20,24 +20,22 @@ public class GridManager : MBSingleton<GridManager>
 
     internal int[] _PatternArray;
 
-    internal List<GameObject> _RowParentList;
+    internal List<GameObject> _RowParentList;//= new List<GameObject>();
 
     internal List<Grid> m_GridList = new List<Grid>();
 
     private CameraManager pCurrentCamera;
 
-    public enum GridImage
-    {
-        NONE,
-        SQUARE,
-        DOT,
-        FRAME,
-        RED,
-        WOOD,
-        OAK,
-        GLASS,
-        BLACK_DOT,
-    }
+    private float _SpriteWidth;
+
+    private float LeftSide => pCurrentCamera.LeftX + (_SpriteWidth / 2f);
+
+    private float DownSide => pCurrentCamera.DownY + (_SpriteWidth / 2f);
+
+    private bool DrawByWidth;
+
+    public delegate void voidDelegate();
+    public voidDelegate OnGridDraw;
 
     void Start()
     {
@@ -54,17 +52,16 @@ public class GridManager : MBSingleton<GridManager>
          * 
         */
 
-        Init();
-        SetCamera();
+        _RowParentList = new List<GameObject>();
+        InitializeVariables();
+        //  SetCamera();
         // Will change the orthographic size based on horizontal and vertical grid numbers.
     }
 
     void Init()
     {
-        _RowParentList = new List<GameObject>();
         pCurrentCamera = Camera.main.GetComponent<CameraManager>();
         UpdatePattern();
-        _DrawGrid.RefreshVariables();
     }
 
     void UpdatePattern()
@@ -93,6 +90,9 @@ public class GridManager : MBSingleton<GridManager>
 
     public void SetCamera()
     {
+        if (pCurrentCamera == null || pCurrentCamera._Camera == null)
+            return;
+
         float totalcoveredwidth, totalcoveredheight;
 
         // will decide to draw grid by horizontall or vertically
@@ -100,32 +100,124 @@ public class GridManager : MBSingleton<GridManager>
         // Considering by width wise
         if ((pCurrentCamera._Camera.aspect * _VerticalLength / _HorizontalLength) <= 1)
         {
-            totalcoveredwidth = _DrawGrid._SpriteWidth * _HorizontalLength; // 1.28*8 = 10.24
+            totalcoveredwidth = _SpriteWidth * _HorizontalLength; // 1.28*8 = 10.24
 
             totalcoveredwidth += (_HorizontalLength + 1) * _Offset;
 
             pCurrentCamera.SetOrthoGraphicSize(totalcoveredwidth / (pCurrentCamera._Camera.aspect * 2));
-            _DrawGrid.DrawByWidth = true;
-            _DrawGrid.Draw();
+            DrawByWidth = true;
+            Draw();
         }
 
         //Considering by height wise
         else
         {
-            totalcoveredheight = _DrawGrid._SpriteWidth * _VerticalLength; // 1.28*12 = 15.36
+            totalcoveredheight = _SpriteWidth * _VerticalLength; // 1.28*12 = 15.36
 
             totalcoveredheight += (_VerticalLength + 1) * _Offset;
 
             pCurrentCamera.SetOrthoGraphicSize(totalcoveredheight / 2);
-            _DrawGrid.DrawByWidth = false;
-            _DrawGrid.Draw();
+            DrawByWidth = false;
+            Draw();
         }
+    }
+
+    public void Draw()
+    {
+        float offset = _Offset;
+        for (int j = 0; j < _VerticalLength; j++)
+        {
+            GameObject row;
+            string rowName = "Row " + j;
+            if (!_RowParentList.Any(m => m.name == rowName))
+            {
+                Transform t = transform.Find(rowName);
+                row = t != null ? t.gameObject : new GameObject(rowName);
+                DefaultFunction.Instance.SetParent(row.transform, transform);
+                row.transform.position = GetPosition(0, j);
+                _RowParentList.Add(row);
+            }
+            else
+                row = _RowParentList.Find(m => m.name == rowName);
+
+            for (int i = 0; i < _PatternArray[_VerticalLength - j - 1]; i++)
+            {
+                string gridName = i + "," + j;
+                if (!m_GridList.Any(m => m._Id == gridName))
+                {
+                    Transform t = row.transform.Find(gridName);
+                    GameObject g = t != null ? t.gameObject : Instantiate(_GridPrefab);
+                    g.transform.position = GetPosition(i, j);
+                    g.name = gridName;
+                    DefaultFunction.Instance.SetParent(g.transform, row.transform);
+                    g.GetComponent<Grid>()._Id = gridName;
+                    g.GetComponent<Grid>().SetSprite(_GridImage);
+                    m_GridList.Add(g.GetComponent<Grid>());
+                }
+            }
+        }
+    }
+
+    private Vector3 GetPosition(int i, int j)
+    {
+        float offset = _Offset;
+
+        float downstarter = -1 * ((_VerticalLength - 1) * (_SpriteWidth + offset)) / 2f;
+        float leftstarter = -1 * ((_HorizontalLength - 1) * (_SpriteWidth + offset)) / 2f;
+        float x, y;
+
+        if (DrawByWidth)
+        {
+            x = LeftSide + (i * _SpriteWidth) + (i + 1) * offset;
+            y = downstarter + (j * (_SpriteWidth + offset));
+        }
+        else
+        {
+            x = leftstarter + i * (_SpriteWidth + offset);
+            y = DownSide + (j * _SpriteWidth) + (j + 1) * offset;
+        }
+
+        return new Vector3(x, y, 0);
+    }
+
+    public void UpdateValues()
+    {
+        SetCamera();
+        float offset = _Offset;
+
+        m_GridList.ForEach(t => t.gameObject.SetActive(false));
+
+        for (int j = 0; j < _VerticalLength; j++)
+        {
+            for (int i = 0; i < _PatternArray[_VerticalLength - j - 1]; i++)
+            {
+                Grid grid = m_GridList.Find(m => m._Id == i + "," + j);
+                if (grid != null)
+                {
+                    grid.gameObject.SetActive(true);
+                    grid.transform.position = GetPosition(i, j);
+                    grid.SetSprite(_GridImage);
+                }
+            }
+        }
+
+        OnGridDraw?.Invoke();
+    }
+
+    public void ChangeSprite()
+    {
+        _SpriteWidth = _GridImage.rect.width / _GridImage.pixelsPerUnit;
     }
 
     private void OnValidate()
     {
-        UpdatePattern();
-        _DrawGrid?.ChangeSprite();
-        _DrawGrid?.UpdateValues();
+        InitializeVariables();
+    }
+
+    private void InitializeVariables()
+    {
+        Init();
+        ChangeSprite();
+        UpdateValues();
     }
 }
